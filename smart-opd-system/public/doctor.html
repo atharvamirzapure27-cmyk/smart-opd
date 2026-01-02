@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Doctor Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="brand">
+      <img src="assets/logo.svg" class="logo" alt="logo">
+      <div>
+        <div class="title">Smart OPD Queue System</div>
+        <div class="tagline">Reducing Hospital Waiting Time with Technology</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div id="userRole" class="small muted">Loading...</div>
+      <button id="logoutBtn" class="btn nav-logout">Logout</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="grid">
+      <section class="card fade-up">
+        <h2 class="page-title">Current Patient</h2>
+        <div id="current" class="small muted">None</div>
+        <div style="margin-top:12px" class="controls">
+          <button id="callNextBtn" class="btn primary">▶ Call Next</button>
+          <button id="completeBtn" class="btn secondary">✅ Mark Completed</button>
+        </div>
+      </section>
+
+      <aside>
+        <div class="card">
+          <h3 class="small muted">Waiting Queue</h3>
+          <div id="queueList"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+  <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signOut,
+  connectAuthEmulator
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  doc,
+  updateDoc,
+  getDocs,
+  getDoc,
+  connectFirestoreEmulator
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyC6ALCXtrsYoZ2RrIwAQMLLHX30ztYTnpo",
+  authDomain: "studio-1828532244-e822b.firebaseapp.com",
+  projectId: "studio-1828532244-e822b",
+  storageBucket: "studio-1828532244-e822b.appspot.com",
+  messagingSenderId: "722776494280",
+  appId: "1:722776494280:web:a3fef849e76f15a98995fd"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  console.log('[emulator] connected to localhost (auth:9099, firestore:8080)');
+}
+ 
+
+let doctorEmail = null;
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return window.location.href = 'index.html';
+  showLoading(true);
+  const profileRef = doc(db, 'users', user.uid);
+  const profSnap = await getDoc(profileRef);
+  if (!profSnap.exists() || profSnap.data().role !== 'doctor') {
+    alert('Access denied');
+    await signOut(auth);
+    return window.location.href = 'index.html';
+  }
+  doctorEmail = user.email;
+  document.getElementById('userRole').innerText = `Doctor: ${profSnap.data().name || user.email}`;
+  subscribeQueue();
+  subscribeCurrent();
+  showLoading(false);
+});
+
+function subscribeQueue() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('doctorEmail', '==', doctorEmail),
+    where('status', '==', 'waiting'),
+    orderBy('token')
+  );
+  onSnapshot(q, snap => {
+    const list = document.getElementById('queueList');
+    list.innerHTML = '';
+    if (snap.empty) return list.innerHTML = '<div class="muted">No waiting patients</div>';
+    snap.forEach(d => {
+      const a = d.data();
+      const div = document.createElement('div');
+      div.className = 'queue-item fade-up';
+      div.innerHTML = `<div><strong>Token ${a.token}</strong> • ${a.patientEmail}<div class="small">OPD: ${a.opd} • ${a.time}</div></div><div><button class="btn ghost" onclick="callSpecific('${d.id}')">Call</button></div>`;
+      list.appendChild(div);
+    });
+  });
+}
+
+function subscribeCurrent() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('doctorEmail', '==', doctorEmail),
+    where('status', '==', 'consulting'),
+    orderBy('token')
+  );
+  onSnapshot(q, snap => {
+    const c = document.getElementById('current');
+    if (snap.empty) return c.innerText = 'None';
+    const d = snap.docs[0].data();
+    c.innerHTML = `<strong>Token ${d.token}</strong> • ${d.patientEmail} <div class="small">OPD: ${d.opd} • ${d.time}</div>`;
+  });
+}
+
+async function callSpecific(id) {
+  const ref = doc(db, 'appointments', id);
+  await updateDoc(ref, { status: 'consulting' });
+}
+
+async function callNext() {
+  showLoading(true);
+  const q = query(collection(db, 'appointments'), where('doctorEmail', '==', doctorEmail), where('status','==','waiting'), orderBy('token'));
+  const snap = await getDocs(q);
+  if (snap.empty) { showLoading(false); return alert('No waiting patients'); }
+  const next = snap.docs[0];
+  await updateDoc(doc(db, 'appointments', next.id), { status: 'consulting' });
+  showLoading(false);
+}
+
+async function completeCurrent() {
+  showLoading(true);
+  const q = query(collection(db,'appointments'), where('doctorEmail','==',doctorEmail), where('status','==','consulting'), orderBy('token'));
+  const snap = await getDocs(q);
+  if (snap.empty) { showLoading(false); return alert('No patient in progress'); }
+  const curr = snap.docs[0];
+  await updateDoc(doc(db,'appointments', curr.id), { status: 'completed' });
+  showLoading(false);
+}
+
+document.getElementById('callNextBtn').addEventListener('click', callNext);
+document.getElementById('completeBtn').addEventListener('click', completeCurrent);
+window.callSpecific = callSpecific;
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{ await signOut(auth); location.href='index.html' });
+
+function showLoading(v){document.getElementById('loading').classList.toggle('hidden', !v)}
+</script>
+
+</body>
+</html>
