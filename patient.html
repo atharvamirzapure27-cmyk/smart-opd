@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Patient Dashboard - Smart OPD</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="brand">
+      <div class="hospital-logo" style="font-size:32px">🏥</div>
+      <div>
+        <div class="title">Smart OPD Queue System</div>
+        <div class="tagline">Patient Dashboard</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div id="userInfo" class="small muted">Loading...</div>
+      <button id="logoutBtn" class="btn nav-logout">Logout</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="grid">
+      <section class="card fade-up">
+        <h2 class="page-title">📝 Book New Appointment</h2>
+        
+        <div id="hospitalStatus" class="card" style="margin-bottom: 20px; padding: 12px; background: #e3f2fd;"></div>
+        
+        <label>Select Hospital</label>
+        <select id="hospitalSelect">
+          <option value="">-- Select Hospital --</option>
+          <option value="AVBRH">AVBRH, DMIHER, Sawangi (Wardha)</option>
+          <option value="SHALINI">Shalini Tai Meghe Superspeciality Centre</option>
+        </select>
+
+        <label>Select OPD Department</label>
+        <select id="opdSelect">
+          <option value="">-- Select OPD --</option>
+        </select>
+
+        <label>Select Doctor</label>
+        <select id="doctorSelect">
+          <option value="">-- Select Doctor --</option>
+        </select>
+
+        <label>Preferred Time Slot</label>
+        <select id="timeSlot">
+          <option value="09:00-10:00">09:00 - 10:00 AM</option>
+          <option value="10:00-11:00">10:00 - 11:00 AM</option>
+          <option value="11:00-12:00">11:00 - 12:00 PM</option>
+          <option value="12:00-13:00">12:00 - 01:00 PM</option>
+          <option value="14:00-15:00">02:00 - 03:00 PM</option>
+          <option value="15:00-16:00">03:00 - 04:00 PM</option>
+          <option value="16:00-17:00">04:00 - 05:00 PM</option>
+        </select>
+
+        <div style="margin-top:16px">
+          <button id="bookBtn" class="btn primary full-width">✅ Book Appointment</button>
+        </div>
+      </section>
+
+      <aside>
+        <div class="card fade-up">
+          <h3 class="page-title" style="font-size: 18px;">📊 Your Appointments</h3>
+          <div id="appointmentsList"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+  <script type="module">
+import { auth, db } from './js/firebase-config.js';
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, addDoc, query, where, getDocs, onSnapshot, orderBy, serverTimestamp, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { isHospitalOpen, getTodayDate, HOSPITALS, OPD_DEPARTMENTS } from './js/hospital-config.js';
+
+let currentUser = null;
+let currentUserData = null;
+let allDoctors = [];
+
+// Auth check
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location.href = 'login.html';
+    return;
+  }
+  
+  showLoading(true);
+  const userDoc = await getDoc(doc(db, 'users', user.uid));
+  
+  if (!userDoc.exists() || userDoc.data().role !== 'patient') {
+    alert('Access denied. Patient role required.');
+    await signOut(auth);
+    location.href = 'login.html';
+    return;
+  }
+  
+  currentUser = user;
+  currentUserData = userDoc.data();
+  document.getElementById('userInfo').textContent = `👤 ${currentUserData.name || user.email}`;
+  
+  checkHospitalStatus();
+  loadOPDList();
+  loadDoctors();
+  subscribeAppointments();
+  showLoading(false);
+});
+
+// Hospital status check
+function checkHospitalStatus() {
+  const status = isHospitalOpen();
+  const statusDiv = document.getElementById('hospitalStatus');
+  
+  if (status.open) {
+    statusDiv.innerHTML = `<strong>✅ Hospital Open</strong><br><span class="small">${status.message}</span>`;
+    statusDiv.style.background = '#c8e6c9';
+  } else {
+    statusDiv.innerHTML = `<strong>⚠️ Hospital Closed</strong><br><span class="small">${status.message}</span>`;
+    statusDiv.style.background = '#ffcdd2';
+    document.getElementById('bookBtn').disabled = true;
+    document.getElementById('bookBtn').textContent = '⛔ Booking Unavailable';
+  }
+}
+
+// Load OPD departments
+function loadOPDList() {
+  const select = document.getElementById('opdSelect');
+  OPD_DEPARTMENTS.forEach(opd => {
+    const option = document.createElement('option');
+    option.value = opd;
+    option.textContent = opd;
+    select.appendChild(option);
+  });
+}
+
+// Load doctors from Firestore
+async function loadDoctors() {
+  const q = query(collection(db, 'users'), where('role', '==', 'doctor'));
+  const snap = await getDocs(q);
+  allDoctors = [];
+  snap.forEach(d => {
+    allDoctors.push({ id: d.id, ...d.data() });
+  });
+}
+
+// Filter doctors by hospital and OPD
+document.getElementById('hospitalSelect').addEventListener('change', filterDoctors);
+document.getElementById('opdSelect').addEventListener('change', filterDoctors);
+
+function filterDoctors() {
+  const hospital = document.getElementById('hospitalSelect').value;
+  const opd = document.getElementById('opdSelect').value;
+  const doctorSelect = document.getElementById('doctorSelect');
+  
+  doctorSelect.innerHTML = '<option value="">-- Select Doctor --</option>';
+  
+  if (!hospital || !opd) return;
+  
+  const filtered = allDoctors.filter(d => 
+    (!d.hospital || d.hospital === hospital) && 
+    (!d.department || d.department === opd)
+  );
+  
+  if (filtered.length === 0) {
+    const option = document.createElement('option');
+    option.textContent = 'No doctors available';
+    option.disabled = true;
+    doctorSelect.appendChild(option);
+    return;
+  }
+  
+  filtered.forEach(doctor => {
+    const option = document.createElement('option');
+    option.value = doctor.id;
+    option.textContent = doctor.name || doctor.email;
+    option.dataset.email = doctor.email;
+    option.dataset.name = doctor.name;
+    doctorSelect.appendChild(option);
+  });
+}
+
+// Book appointment
+document.getElementById('bookBtn').addEventListener('click', async () => {
+  const hospital = document.getElementById('hospitalSelect').value;
+  const opd = document.getElementById('opdSelect').value;
+  const doctorId = document.getElementById('doctorSelect').value;
+  const timeSlot = document.getElementById('timeSlot').value;
+  
+  if (!hospital || !opd || !doctorId || !timeSlot) {
+    alert('Please fill all fields');
+    return;
+  }
+  
+  const doctorOption = document.getElementById('doctorSelect').selectedOptions[0];
+  const doctorName = doctorOption.dataset.name;
+  const doctorEmail = doctorOption.dataset.email;
+  
+  // Check hospital hours again
+  const status = isHospitalOpen();
+  if (!status.open) {
+    alert(`Cannot book: ${status.message}`);
+    return;
+  }
+  
+  showLoading(true);
+  try {
+    // Calculate token number
+    const today = getTodayDate();
+    const q = query(
+      collection(db, 'appointments'),
+      where('doctorId', '==', doctorId),
+      where('opd', '==', opd),
+      where('date', '==', today)
+    );
+    const snap = await getDocs(q);
+    const token = snap.size + 1;
+    
+    await addDoc(collection(db, 'appointments'), {
+      patientId: currentUser.uid,
+      patientName: currentUserData.name,
+      doctorId: doctorId,
+      doctorName: doctorName,
+      hospital: HOSPITALS[hospital],
+      opd: opd,
+      token: token,
+      timeSlot: timeSlot,
+      status: 'waiting',
+      date: today,
+      createdAt: serverTimestamp()
+    });
+    
+    alert(`✅ Appointment booked!
+
+Token Number: ${token}
+Doctor: ${doctorName}
+OPD: ${opd}
+Time: ${timeSlot}`);
+    
+    // Reset form
+    document.getElementById('hospitalSelect').value = '';
+    document.getElementById('opdSelect').value = '';
+    document.getElementById('doctorSelect').innerHTML = '<option value="">-- Select Doctor --</option>';
+  } catch (e) {
+    alert('Booking failed: ' + e.message);
+  }
+  showLoading(false);
+});
+
+// Subscribe to appointments
+function subscribeAppointments() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('patientId', '==', currentUser.uid),
+    orderBy('createdAt', 'desc')
+  );
+  
+  onSnapshot(q, snap => {
+    const container = document.getElementById('appointmentsList');
+    container.innerHTML = '';
+    
+    if (snap.empty) {
+      container.innerHTML = '<div class="muted text-center" style="padding: 20px;">No appointments yet</div>';
+      return;
+    }
+    
+    snap.forEach(d => {
+      const appt = d.data();
+      const div = document.createElement('div');
+      div.className = 'appt-card fade-up';
+      
+      const statusClass = appt.status === 'waiting' ? 'waiting' : 
+                          appt.status === 'consulting' ? 'consulting' : 'completed';
+      
+      div.innerHTML = `
+        <div>
+          <div><strong>Token ${appt.token}</strong></div>
+          <div class="small muted">${appt.doctorName}</div>
+          <div class="small muted">${appt.opd} • ${appt.timeSlot}</div>
+          <div class="small muted">${appt.date}</div>
+        </div>
+        <div class="badges">
+          <div class="badge ${statusClass}">${appt.status}</div>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  });
+}
+
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await signOut(auth);
+  location.href = 'login.html';
+});
+
+function showLoading(v) {
+  document.getElementById('loading').classList.toggle('hidden', !v);
+}
+</script>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+</body>
+</html>

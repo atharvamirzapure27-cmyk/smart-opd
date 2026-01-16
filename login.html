@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Login - Smart OPD Queue Management System</title>
+	<link rel="stylesheet" href="css/style.css">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="landing-page">
+
+	<header class="landing-header">
+		<div class="header-content">
+			<div class="hospital-logo">🏥</div>
+			<div>
+				<h1 class="system-title">Smart OPD Queue Management System</h1>
+				<p class="system-tagline">Secure Login</p>
+			</div>
+		</div>
+	</header>
+
+	<main class="landing-main">
+		<div class="auth-panel" id="loginPanel">
+			<h2 id="authTitle">Login</h2>
+			<div class="auth-container">
+				<div class="auth-form" id="loginForm">
+					<input id="loginEmail" type="email" placeholder="Email" autocomplete="email" />
+					<input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" />
+					<button id="loginBtn" class="btn primary full-width">Login</button>
+					<p id="loginMsg" class="auth-message"></p>
+				</div>
+			</div>
+		</div>
+	</main>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+	<div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+	<script type="module">
+		import { auth, db } from './js/firebase-config.js';
+		import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+		import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+		// Login functionality
+		document.getElementById('loginBtn').addEventListener('click', async () => {
+			const msg = document.getElementById('loginMsg');
+			msg.textContent = '';
+
+			const email = document.getElementById('loginEmail').value.trim();
+			const password = document.getElementById('loginPassword').value;
+
+			if (!email || !password) {
+				msg.textContent = 'Email and password required';
+				return;
+			}
+
+			showLoading(true);
+			try {
+				// Authenticate user with Firebase
+				const userCredential = await signInWithEmailAndPassword(auth, email, password);
+				const user = userCredential.user;
+
+				// Fetch user document from Firestore
+				const userDoc = await getDoc(doc(db, 'users', user.uid));
+				
+				if (!userDoc.exists()) {
+					msg.textContent = 'User profile not found';
+					showLoading(false);
+					return;
+				}
+
+				const userData = userDoc.data();
+				const role = userData.role;
+
+				// Redirect based on role
+				if (role === 'admin') {
+					window.location.href = 'admin.html';
+				} else if (role === 'doctor') {
+					window.location.href = 'doctor.html';
+				} else if (role === 'patient') {
+					window.location.href = 'patient.html';
+				} else {
+					msg.textContent = 'Invalid role assigned';
+					showLoading(false);
+				}
+			} catch (e) {
+				msg.textContent = e.message;
+				showLoading(false);
+			}
+		});
+
+		function showLoading(v) {
+			document.getElementById('loading').classList.toggle('hidden', !v);
+		}
+
+		// Auto-redirect if already logged in
+		import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+		
+		onAuthStateChanged(auth, (user) => {
+			if (user) {
+				// User is signed in, check their role and redirect
+				getDoc(doc(db, 'users', user.uid)).then(userDoc => {
+					if (userDoc.exists()) {
+						const role = userDoc.data().role;
+						if (role === 'admin') {
+							window.location.href = 'admin.html';
+						} else if (role === 'doctor') {
+							window.location.href = 'doctor.html';
+						} else if (role === 'patient') {
+							window.location.href = 'patient.html';
+						}
+					}
+				}).catch(error => {
+					console.error('Error getting user role:', error);
+				});
+			}
+		});
+	</script>
+
+</body>
+</html>

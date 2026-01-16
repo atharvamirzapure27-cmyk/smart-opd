@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard Router</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg">
+  <div class="center-screen card-animate">
+    <h2>Redirecting...</h2>
+    <div class="muted">If you're not redirected, <a href="index.html">go back to login</a>.</div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, getDoc, doc, connectFirestoreEmulator } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC6ALCXtrsYoZ2RrIwAQMLLHX30ztYTnpo",
+      authDomain: "studio-1828532244-e822b.firebaseapp.com",
+      projectId: "studio-1828532244-e822b"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+      connectFirestoreEmulator(db, '127.0.0.1', 8080);
+      console.log('[emulator] connected to localhost (auth:9099, firestore:8080)');
+    }
+
+    onAuthStateChanged(auth, async user => {
+      if (!user) return location.href = 'index.html';
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      const role = snap.exists() ? snap.data().role : null;
+      if (role === 'patient') return location.href = 'patient.html';
+      if (role === 'doctor') return location.href = 'doctor.html';
+      if (role === 'admin') return location.href = 'admin.html';
+      location.href = 'index.html';
+    });
+  </script>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+</body>
+</html>

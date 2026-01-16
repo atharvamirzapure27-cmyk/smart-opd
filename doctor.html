@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Doctor Dashboard - Smart OPD</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="brand">
+      <div class="hospital-logo" style="font-size:32px">🏥</div>
+      <div>
+        <div class="title">Smart OPD Queue System</div>
+        <div class="tagline">Doctor Dashboard</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div id="doctorInfo" class="small muted">Loading...</div>
+      <button id="logoutBtn" class="btn nav-logout">Logout</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="stats-row">
+      <div class="card stat-card" style="text-align: center;">
+        <div class="small" style="color: white; opacity: 0.9;">Waiting Patients</div>
+        <h3 id="waitingCount" style="color: white;">0</h3>
+      </div>
+      <div class="card stat-card" style="text-align: center; background: linear-gradient(135deg, #26a69a 0%, #00897b 100%);">
+        <div class="small" style="color: white; opacity: 0.9;">Current Token</div>
+        <h3 id="currentToken" style="color: white;">-</h3>
+      </div>
+      <div class="card stat-card" style="text-align: center; background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);">
+        <div class="small" style="color: white; opacity: 0.9;">Completed Today</div>
+        <h3 id="completedCount" style="color: white;">0</h3>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card fade-up">
+        <h2 class="page-title">🩺 Current Patient</h2>
+        <div id="currentPatient" class="muted" style="padding: 20px; text-align: center; border: 2px dashed #e0e0e0; border-radius: 12px;">
+          No patient in consultation
+        </div>
+        <div class="controls" style="margin-top: 20px;">
+          <button id="callNextBtn" class="btn primary">▶️ Call Next Patient</button>
+          <button id="completeBtn" class="btn success">✅ Mark Completed</button>
+        </div>
+      </section>
+
+      <aside>
+        <div class="card fade-up">
+          <h3 class="page-title" style="font-size: 18px;">📋 Waiting Queue</h3>
+          <div id="queueList"></div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="card fade-up" style="margin-top: 24px;">
+      <h3 class="page-title" style="font-size: 18px;">📈 Today's Completed Appointments</h3>
+      <div id="completedList"></div>
+    </div>
+  </main>
+
+  <div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+  <script type="module">
+import { auth, db } from './js/firebase-config.js';
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getTodayDate } from './js/hospital-config.js';
+
+let currentDoctorId = null;
+let currentDoctorData = null;
+
+// Auth check
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location.href = 'login.html';
+    return;
+  }
+  
+  showLoading(true);
+  const userDoc = await getDoc(doc(db, 'users', user.uid));
+  
+  if (!userDoc.exists() || userDoc.data().role !== 'doctor') {
+    alert('Access denied. Doctor role required.');
+    await signOut(auth);
+    location.href = 'login.html';
+    return;
+  }
+  
+  currentDoctorId = user.uid;
+  currentDoctorData = userDoc.data();
+  document.getElementById('doctorInfo').textContent = `👨‍⚕️ Dr. ${currentDoctorData.name || user.email}`;
+  
+  subscribeQueue();
+  subscribeCurrent();
+  subscribeCompleted();
+  showLoading(false);
+});
+
+const today = getTodayDate();
+
+// Subscribe to waiting queue
+function subscribeQueue() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('doctorId', '==', currentDoctorId),
+    where('status', '==', 'waiting'),
+    where('date', '==', today),
+    orderBy('token', 'asc')
+  );
+  
+  onSnapshot(q, snap => {
+    const list = document.getElementById('queueList');
+    list.innerHTML = '';
+    document.getElementById('waitingCount').textContent = snap.size;
+    
+    if (snap.empty) {
+      list.innerHTML = '<div class="muted text-center" style="padding: 20px;">No patients waiting</div>';
+      return;
+    }
+    
+    snap.forEach(d => {
+      const appt = d.data();
+      const div = document.createElement('div');
+      div.className = 'queue-item fade-up';
+      div.innerHTML = `
+        <div>
+          <div><strong>Token ${appt.token}</strong> - ${appt.patientName}</div>
+          <div class="small muted">${appt.opd} • ${appt.timeSlot}</div>
+        </div>
+        <button class="btn ghost" onclick="window.callSpecific('${d.id}')">Call</button>
+      `;
+      list.appendChild(div);
+    });
+  });
+}
+
+// Subscribe to current patient
+function subscribeCurrent() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('doctorId', '==', currentDoctorId),
+    where('status', '==', 'consulting'),
+    where('date', '==', today)
+  );
+  
+  onSnapshot(q, snap => {
+    const container = document.getElementById('currentPatient');
+    
+    if (snap.empty) {
+      container.innerHTML = '<div class="muted">No patient in consultation</div>';
+      container.style.border = '2px dashed #e0e0e0';
+      document.getElementById('currentToken').textContent = '-';
+      document.getElementById('completeBtn').disabled = true;
+      return;
+    }
+    
+    const appt = snap.docs[0].data();
+    container.style.border = '2px solid var(--primary)';
+    container.style.background = '#e3f2fd';
+    document.getElementById('currentToken').textContent = appt.token;
+    document.getElementById('completeBtn').disabled = false;
+    
+    container.innerHTML = `
+      <div style="text-align: left;">
+        <h3 style="margin: 0 0 12px 0; color: var(--primary);">Token ${appt.token}</h3>
+        <p style="margin: 6px 0;"><strong>Patient:</strong> ${appt.patientName}</p>
+        <p style="margin: 6px 0;"><strong>OPD:</strong> ${appt.opd}</p>
+        <p style="margin: 6px 0;"><strong>Time Slot:</strong> ${appt.timeSlot}</p>
+        <div class="badge consulting" style="margin-top: 12px;">In Consultation</div>
+      </div>
+    `;
+  });
+}
+
+// Subscribe to completed appointments
+function subscribeCompleted() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('doctorId', '==', currentDoctorId),
+    where('status', '==', 'completed'),
+    where('date', '==', today),
+    orderBy('token', 'asc')
+  );
+  
+  onSnapshot(q, snap => {
+    const list = document.getElementById('completedList');
+    list.innerHTML = '';
+    document.getElementById('completedCount').textContent = snap.size;
+    
+    if (snap.empty) {
+      list.innerHTML = '<div class="muted text-center" style="padding: 20px;">No completed appointments yet</div>';
+      return;
+    }
+    
+    snap.forEach(d => {
+      const appt = d.data();
+      const div = document.createElement('div');
+      div.className = 'queue-item fade-up';
+      div.innerHTML = `
+        <div>
+          <div><strong>Token ${appt.token}</strong> - ${appt.patientName}</div>
+          <div class="small muted">${appt.opd} • ${appt.timeSlot}</div>
+        </div>
+        <div class="badge completed">Completed</div>
+      `;
+      list.appendChild(div);
+    });
+  });
+}
+
+// Call specific patient
+window.callSpecific = async function(appointmentId) {
+  showLoading(true);
+  try {
+    // First, complete any current consulting patient
+    const consultingQuery = query(
+      collection(db, 'appointments'),
+      where('doctorId', '==', currentDoctorId),
+      where('status', '==', 'consulting'),
+      where('date', '==', today)
+    );
+    const consultingSnap = await getDocs(consultingQuery);
+    
+    if (!consultingSnap.empty) {
+      const shouldContinue = confirm('A patient is currently in consultation. Complete that consultation first?');
+      if (!shouldContinue) {
+        showLoading(false);
+        return;
+      }
+      await updateDoc(doc(db, 'appointments', consultingSnap.docs[0].id), { status: 'completed' });
+    }
+    
+    // Call the selected patient
+    await updateDoc(doc(db, 'appointments', appointmentId), { status: 'consulting' });
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  showLoading(false);
+};
+
+// Call next patient
+document.getElementById('callNextBtn').addEventListener('click', async () => {
+  showLoading(true);
+  try {
+    // Check if patient already in consultation
+    const consultingQuery = query(
+      collection(db, 'appointments'),
+      where('doctorId', '==', currentDoctorId),
+      where('status', '==', 'consulting'),
+      where('date', '==', today)
+    );
+    const consultingSnap = await getDocs(consultingQuery);
+    
+    if (!consultingSnap.empty) {
+      alert('Please complete current consultation first');
+      showLoading(false);
+      return;
+    }
+    
+    // Get next waiting patient
+    const waitingQuery = query(
+      collection(db, 'appointments'),
+      where('doctorId', '==', currentDoctorId),
+      where('status', '==', 'waiting'),
+      where('date', '==', today),
+      orderBy('token', 'asc')
+    );
+    const waitingSnap = await getDocs(waitingQuery);
+    
+    if (waitingSnap.empty) {
+      alert('No patients waiting');
+      showLoading(false);
+      return;
+    }
+    
+    const nextPatient = waitingSnap.docs[0];
+    await updateDoc(doc(db, 'appointments', nextPatient.id), { status: 'consulting' });
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  showLoading(false);
+});
+
+// Mark current as completed
+document.getElementById('completeBtn').addEventListener('click', async () => {
+  showLoading(true);
+  try {
+    const q = query(
+      collection(db, 'appointments'),
+      where('doctorId', '==', currentDoctorId),
+      where('status', '==', 'consulting'),
+      where('date', '==', today)
+    );
+    const snap = await getDocs(q);
+    
+    if (snap.empty) {
+      alert('No patient in consultation');
+      showLoading(false);
+      return;
+    }
+    
+    await updateDoc(doc(db, 'appointments', snap.docs[0].id), { status: 'completed' });
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  showLoading(false);
+});
+
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await signOut(auth);
+  location.href = 'login.html';
+});
+
+function showLoading(v) {
+  document.getElementById('loading').classList.toggle('hidden', !v);
+}
+</script>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+</body>
+</html>

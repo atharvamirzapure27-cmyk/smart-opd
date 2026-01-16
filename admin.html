@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Dashboard - Smart OPD</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="brand">
+      <div class="hospital-logo" style="font-size:32px">🏥</div>
+      <div>
+        <div class="title">Smart OPD Queue System</div>
+        <div class="tagline">Admin / Receptionist Dashboard</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div id="adminInfo" class="small muted">Loading...</div>
+      <button id="logoutBtn" class="btn nav-logout">Logout</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="stats-row">
+      <div class="card stat-card" style="text-align: center;">
+        <div class="small" style="color: white; opacity: 0.9;">Total Patients</div>
+        <h3 id="totalPatients" style="color: white;">0</h3>
+      </div>
+      <div class="card stat-card" style="text-align: center; background: linear-gradient(135deg, #26a69a 0%, #00897b 100%);">
+        <div class="small" style="color: white; opacity: 0.9;">Total Doctors</div>
+        <h3 id="totalDoctors" style="color: white;">0</h3>
+      </div>
+      <div class="card stat-card" style="text-align: center; background: linear-gradient(135deg, #ffa726 0%, #fb8c00 100%);">
+        <div class="small" style="color: white; opacity: 0.9;">Appointments Today</div>
+        <h3 id="totalAppointments" style="color: white;">0</h3>
+      </div>
+      <div class="card stat-card" style="text-align: center; background: linear-gradient(135deg, #7e57c2 0%, #5e35b1 100%);">
+        <div class="small" style="color: white; opacity: 0.9;">Waiting Now</div>
+        <h3 id="waitingNow" style="color: white;">0</h3>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card fade-up">
+        <h2 class="page-title">👨‍⚕️ Add New Doctor</h2>
+        <label>Full Name</label>
+        <input id="docName" placeholder="Dr. John Doe" />
+        
+        <label>Email</label>
+        <input id="docEmail" type="email" placeholder="doctor@hospital.com" />
+        
+        <label>Password</label>
+        <input id="docPassword" type="password" placeholder="Minimum 6 characters" />
+        
+        <label>Hospital</label>
+        <select id="docHospital">
+          <option value="">-- Select Hospital --</option>
+          <option value="AVBRH">AVBRH, DMIHER, Sawangi (Wardha)</option>
+          <option value="SHALINI">Shalini Tai Meghe Superspeciality Centre</option>
+        </select>
+        
+        <label>Department (OPD)</label>
+        <select id="docDepartment">
+          <option value="">-- Select Department --</option>
+        </select>
+        
+        <div style="margin-top: 16px;">
+          <button id="addDoctorBtn" class="btn primary full-width">➕ Add Doctor</button>
+        </div>
+        <p id="doctorMsg" class="auth-message"></p>
+      </section>
+
+      <aside>
+        <div class="card fade-up">
+          <h3 class="page-title" style="font-size: 18px;">📊 OPD Queue Status</h3>
+          <div id="opdStats"></div>
+        </div>
+        
+        <div class="card fade-up" style="margin-top: 20px;">
+          <h3 class="page-title" style="font-size: 18px;">👨‍⚕️ Registered Doctors</h3>
+          <div id="doctorsList"></div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="card fade-up" style="margin-top: 24px;">
+      <h3 class="page-title" style="font-size: 18px;">📝 Today's Appointments</h3>
+      <div id="appointmentsList"></div>
+    </div>
+  </main>
+
+  <div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+  <script type="module">
+import { auth, db } from './js/firebase-config.js';
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, query, where, getDocs, onSnapshot, doc, getDoc, setDoc, serverTimestamp, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getTodayDate, OPD_DEPARTMENTS, HOSPITALS } from './js/hospital-config.js';
+
+let currentAdminData = null;
+
+// Auth check
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location.href = 'login.html';
+    return;
+  }
+  
+  showLoading(true);
+  const userDoc = await getDoc(doc(db, 'users', user.uid));
+  
+  if (!userDoc.exists() || userDoc.data().role !== 'admin') {
+    alert('Access denied. Admin role required.');
+    await signOut(auth);
+    location.href = 'login.html';
+    return;
+  }
+  
+  currentAdminData = userDoc.data();
+  document.getElementById('adminInfo').textContent = `👤 ${currentAdminData.name || user.email}`;
+  
+  loadOPDList();
+  loadStats();
+  subscribeDoctors();
+  subscribeAppointments();
+  subscribeOpdStats();
+  showLoading(false);
+});
+
+const today = getTodayDate();
+
+// Load OPD departments for doctor form
+function loadOPDList() {
+  const select = document.getElementById('docDepartment');
+  OPD_DEPARTMENTS.forEach(opd => {
+    const option = document.createElement('option');
+    option.value = opd;
+    option.textContent = opd;
+    select.appendChild(option);
+  });
+}
+
+// Load statistics
+async function loadStats() {
+  // Count patients
+  const patientsQuery = query(collection(db, 'users'), where('role', '==', 'patient'));
+  const patientsSnap = await getDocs(patientsQuery);
+  document.getElementById('totalPatients').textContent = patientsSnap.size;
+  
+  // Count doctors
+  const doctorsQuery = query(collection(db, 'users'), where('role', '==', 'doctor'));
+  const doctorsSnap = await getDocs(doctorsQuery);
+  document.getElementById('totalDoctors').textContent = doctorsSnap.size;
+  
+  // Count today's appointments
+  const apptQuery = query(collection(db, 'appointments'), where('date', '==', today));
+  const apptSnap = await getDocs(apptQuery);
+  document.getElementById('totalAppointments').textContent = apptSnap.size;
+  
+  // Count waiting now
+  const waitingQuery = query(
+    collection(db, 'appointments'),
+    where('date', '==', today),
+    where('status', '==', 'waiting')
+  );
+  const waitingSnap = await getDocs(waitingQuery);
+  document.getElementById('waitingNow').textContent = waitingSnap.size;
+}
+
+// Subscribe to doctors list
+function subscribeDoctors() {
+  const q = query(collection(db, 'users'), where('role', '==', 'doctor'));
+  onSnapshot(q, snap => {
+    const list = document.getElementById('doctorsList');
+    list.innerHTML = '';
+    
+    if (snap.empty) {
+      list.innerHTML = '<div class="muted text-center" style="padding: 20px;">No doctors registered</div>';
+      return;
+    }
+    
+    snap.forEach(d => {
+      const doctor = d.data();
+      const div = document.createElement('div');
+      div.className = 'queue-item fade-up';
+      div.innerHTML = `
+        <div>
+          <div><strong>${doctor.name}</strong></div>
+          <div class="small muted">${doctor.email}</div>
+          <div class="small muted">${doctor.department || 'N/A'} • ${doctor.hospital || 'N/A'}</div>
+        </div>
+      `;
+      list.appendChild(div);
+    });
+  });
+}
+
+// Subscribe to OPD stats
+function subscribeOpdStats() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('date', '==', today),
+    where('status', '==', 'waiting')
+  );
+  
+  onSnapshot(q, snap => {
+    const stats = document.getElementById('opdStats');
+    stats.innerHTML = '';
+    
+    if (snap.empty) {
+      stats.innerHTML = '<div class="muted text-center" style="padding: 20px;">No waiting patients</div>';
+      return;
+    }
+    
+    const counts = {};
+    snap.forEach(d => {
+      const opd = d.data().opd;
+      counts[opd] = (counts[opd] || 0) + 1;
+    });
+    
+    Object.entries(counts).forEach(([opd, count]) => {
+      const div = document.createElement('div');
+      div.className = 'queue-item fade-up';
+      div.innerHTML = `
+        <div>
+          <strong>${opd}</strong>
+          <div class="small muted">Waiting patients</div>
+        </div>
+        <div class="badge waiting">${count}</div>
+      `;
+      stats.appendChild(div);
+    });
+  });
+}
+
+// Subscribe to appointments
+function subscribeAppointments() {
+  const q = query(
+    collection(db, 'appointments'),
+    where('date', '==', today),
+    orderBy('createdAt', 'desc')
+  );
+  
+  onSnapshot(q, snap => {
+    const list = document.getElementById('appointmentsList');
+    list.innerHTML = '';
+    
+    if (snap.empty) {
+      list.innerHTML = '<div class="muted text-center" style="padding: 20px;">No appointments today</div>';
+      return;
+    }
+    
+    snap.forEach(d => {
+      const appt = d.data();
+      const div = document.createElement('div');
+      div.className = 'appt-card fade-up';
+      
+      const statusClass = appt.status === 'waiting' ? 'waiting' : 
+                          appt.status === 'consulting' ? 'consulting' : 'completed';
+      
+      div.innerHTML = `
+        <div>
+          <div><strong>Token ${appt.token}</strong> - ${appt.patientName}</div>
+          <div class="small muted">Doctor: ${appt.doctorName}</div>
+          <div class="small muted">${appt.opd} • ${appt.timeSlot}</div>
+        </div>
+        <div class="badges">
+          <div class="badge ${statusClass}">${appt.status}</div>
+        </div>
+      `;
+      list.appendChild(div);
+    });
+  });
+}
+
+// Add doctor
+document.getElementById('addDoctorBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('doctorMsg');
+  msg.textContent = '';
+  
+  const name = document.getElementById('docName').value.trim();
+  const email = document.getElementById('docEmail').value.trim();
+  const password = document.getElementById('docPassword').value;
+  const hospital = document.getElementById('docHospital').value;
+  const department = document.getElementById('docDepartment').value;
+  
+  if (!name || !email || !password || !hospital || !department) {
+    msg.textContent = 'All fields are required';
+    return;
+  }
+  
+  if (password.length < 6) {
+    msg.textContent = 'Password must be at least 6 characters';
+    return;
+  }
+  
+  showLoading(true);
+  try {
+    // Create auth user
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    
+    // Sign out immediately (admin shouldn't be logged in as doctor)
+    await signOut(auth);
+    
+    // Create doctor profile
+    await setDoc(doc(db, 'users', cred.user.uid), {
+      name,
+      email,
+      role: 'doctor',
+      hospital: HOSPITALS[hospital],
+      department,
+      createdAt: serverTimestamp()
+    });
+    
+    // Re-login admin
+    // Note: In production, use admin SDK on backend
+    alert(`✅ Doctor added successfully!
+
+Name: ${name}
+Email: ${email}
+
+Please login again as admin.`);
+    location.href = 'index.html';
+  } catch (e) {
+    msg.textContent = 'Error: ' + e.message;
+    showLoading(false);
+  }
+});
+
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await signOut(auth);
+  location.href = 'login.html';
+});
+
+function showLoading(v) {
+  document.getElementById('loading').classList.toggle('hidden', !v);
+}
+</script>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+</body>
+</html>

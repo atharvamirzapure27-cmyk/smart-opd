@@ -1,0 +1,83 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Smart OPD Queue Management System</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+	<header class="landing-header">
+		<div class="header-content">
+			<div class="hospital-logo">🏥</div>
+			<div>
+				<h1 class="system-title">Smart OPD Queue Management System</h1>
+				<p class="system-tagline">Reducing Hospital Waiting Time with Technology</p>
+				<p class="hospital-names">AVBRH, DMIHER, Sawangi (Wardha) • Shalini Tai Meghe Superspeciality Centre</p>
+			</div>
+		</div>
+	</header>
+
+	<main class="landing-main">
+		<div class="welcome-message">
+			<h2>Welcome to Smart OPD System</h2>
+			<p>Please login to access the system</p>
+			<button onclick="location.href='login.html'" class="btn primary">Go to Login</button>
+		</div>
+	</main>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+	<div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+	<script type="module">
+		import { auth, db } from './js/firebase-config.js';
+		import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+		import { doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+		// Auto-redirect if already logged in
+		onAuthStateChanged(auth, async user => {
+			if (!user) return;
+			
+			showLoading(true);
+			try {
+				const snap = await getDoc(doc(db, 'users', user.uid));
+				if (!snap.exists()) {
+					await auth.signOut();
+					showLoading(false);
+					return;
+				}
+
+				const role = snap.data().role;
+				if (role === 'patient') location.href = 'patient.html';
+				else if (role === 'doctor') location.href = 'doctor.html';
+				else if (role === 'admin') location.href = 'admin.html';
+				else {
+					await auth.signOut();
+					location.href = 'login.html';
+				}
+			} catch (err) {
+				await auth.signOut();
+				location.href = 'login.html';
+			}
+		});
+
+		function showLoading(v) {
+			document.getElementById('loading').classList.toggle('hidden', !v);
+		}
+	</script>
+
+</body>
+</html>
+
