@@ -24,10 +24,28 @@
 	</header>
 
 	<main class="landing-main">
-		<div class="welcome-message">
-			<h2>Welcome to Smart OPD System</h2>
-			<p>Please login to access the system</p>
-			<button onclick="location.href='login.html'" class="btn primary">Go to Login</button>
+		<div class="role-selector">
+			<h2 class="selector-title">Select Your Role</h2>
+			<div class="role-cards">
+				<div class="role-card" onclick="location.href='patient.html'">
+					<div class="role-icon">👤</div>
+					<h3>Patient Login</h3>
+					<p>Book appointments and track queue status</p>
+					<button class="role-btn btn-patient">Login as Patient</button>
+				</div>
+				<div class="role-card" onclick="location.href='doctor.html'">
+					<div class="role-icon">👨‍⚕️</div>
+					<h3>Doctor Login</h3>
+					<p>Manage your OPD queue and patient consultations</p>
+					<button class="role-btn btn-doctor">Login as Doctor</button>
+				</div>
+				<div class="role-card" onclick="location.href='admin.html'">
+					<div class="role-icon">⚙️</div>
+					<h3>Admin Login</h3>
+					<p>Manage system, doctors, and appointments</p>
+					<button class="role-btn btn-admin">Login as Admin</button>
+				</div>
+			</div>
 		</div>
 	</main>
 
@@ -38,45 +56,6 @@
 			<p>© 2026 Smart OPD System. All rights reserved.</p>
 		</div>
 	</footer>
-
-	<div id="loading" class="loading hidden"><div class="spinner"></div></div>
-
-	<script type="module">
-		import { auth, db } from './js/firebase-config.js';
-		import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-		import { doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-		// Auto-redirect if already logged in
-		onAuthStateChanged(auth, async user => {
-			if (!user) return;
-			
-			showLoading(true);
-			try {
-				const snap = await getDoc(doc(db, 'users', user.uid));
-				if (!snap.exists()) {
-					await auth.signOut();
-					showLoading(false);
-					return;
-				}
-
-				const role = snap.data().role;
-				if (role === 'patient') location.href = 'patient.html';
-				else if (role === 'doctor') location.href = 'doctor.html';
-				else if (role === 'admin') location.href = 'admin.html';
-				else {
-					await auth.signOut();
-					location.href = 'login.html';
-				}
-			} catch (err) {
-				await auth.signOut();
-				location.href = 'login.html';
-			}
-		});
-
-		function showLoading(v) {
-			document.getElementById('loading').classList.toggle('hidden', !v);
-		}
-	</script>
 
 </body>
 </html>
