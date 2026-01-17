@@ -27,27 +27,41 @@
 		<div class="role-selector">
 			<h2 class="selector-title">Select Your Role</h2>
 			<div class="role-cards">
-				<div class="role-card" onclick="location.href='patient.html'">
+				<div class="role-card" onclick="selectRole('patient')">
 					<div class="role-icon">👤</div>
 					<h3>Patient Login</h3>
 					<p>Book appointments and track queue status</p>
-					<button class="role-btn btn-patient">Login as Patient</button>
+					<button class="role-btn btn-patient" onclick="selectRole('patient')">Login as Patient</button>
 				</div>
-				<div class="role-card" onclick="location.href='doctor.html'">
+				<div class="role-card" onclick="selectRole('doctor')">
 					<div class="role-icon">👨‍⚕️</div>
 					<h3>Doctor Login</h3>
 					<p>Manage your OPD queue and patient consultations</p>
-					<button class="role-btn btn-doctor">Login as Doctor</button>
+					<button class="role-btn btn-doctor" onclick="selectRole('doctor')">Login as Doctor</button>
 				</div>
-				<div class="role-card" onclick="location.href='admin.html'">
+				<div class="role-card" onclick="selectRole('admin')">
 					<div class="role-icon">⚙️</div>
 					<h3>Admin Login</h3>
 					<p>Manage system, doctors, and appointments</p>
-					<button class="role-btn btn-admin">Login as Admin</button>
+					<button class="role-btn btn-admin" onclick="selectRole('admin')">Login as Admin</button>
 				</div>
 			</div>
 		</div>
 	</main>
+	
+	<script>
+		function selectRole(role) {
+			localStorage.setItem('selectedRole', role);
+			window.location.href = 'login.html';
+		}
+		
+		// Clear any existing selected role on landing page load
+		localStorage.removeItem('selectedRole');
+		
+		// Also clear any stored user data to ensure fresh login
+		localStorage.removeItem('userRole');
+		localStorage.removeItem('uid');
+	</script>
 
 	<footer class="footer">
 		<div class="footer-content">

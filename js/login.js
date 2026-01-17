@@ -1,78 +1,123 @@
-import { auth, db } from './firebase-config.js';
-import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { auth, db } from "./firebase-config.js";
 
-// Login functionality
-document.getElementById('loginBtn').addEventListener('click', async () => {
-    const msg = document.getElementById('loginMsg');
-    msg.textContent = '';
+import {
+  signInWithEmailAndPassword,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
+import {
+  doc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-    if (!email || !password) {
-        msg.textContent = 'Email and password required';
-        return;
+/* ===============================
+   LOGIN BUTTON HANDLER
+================================ */
+const loginBtn = document.getElementById("loginBtn");
+const msg = document.getElementById("loginMsg");
+const loader = document.getElementById("loading");
+
+loginBtn.addEventListener("click", async () => {
+  msg.textContent = "";
+
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+
+  if (!email || !password) {
+    msg.textContent = "Email and password required";
+    return;
+  }
+
+  showLoading(true);
+
+  try {
+    // 🔐 Firebase Authentication
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const uid = userCredential.user.uid;
+
+    // 📄 Fetch user profile from Firestore
+    const userRef = doc(db, "users", uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      alert("User profile not found in database");
+      showLoading(false);
+      return;
     }
 
-    showLoading(true);
-    try {
-        // Authenticate user with Firebase
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+    const firestoreRole = userSnap.data().role;
+    const selectedRole = localStorage.getItem('selectedRole');
 
-        // Fetch user document from Firestore
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        
-        if (!userDoc.exists()) {
-            alert('User profile not found');
-            showLoading(false);
-            return;
-        }
-
-        const userData = userDoc.data();
-        const role = userData.role;
-
-        // Redirect based on role
-        if (role === 'admin') {
-            window.location.href = 'admin.html';
-        } else if (role === 'doctor') {
-            window.location.href = 'doctor.html';
-        } else if (role === 'patient') {
-            window.location.href = 'patient.html';
-        } else {
-            alert('Invalid role assigned');
-            showLoading(false);
-        }
-    } catch (e) {
-        alert(e.message);
-        showLoading(false);
+    // Compare selected role with Firestore role
+    if (firestoreRole !== selectedRole) {
+      alert("Unauthorized access. Please select the correct role."); 
+      showLoading(false);
+      return;
     }
+
+    // 🔁 Redirect based on role
+    redirectByRole(firestoreRole);
+
+  } catch (error) {
+    console.error("Login error:", error);
+
+    if (error.code === "auth/invalid-credential") {
+      msg.textContent = "Invalid email or password";
+    } else if (error.code === "auth/user-not-found") {
+      msg.textContent = "User not found";
+    } else if (error.code === "auth/wrong-password") {
+      msg.textContent = "Incorrect password";
+    } else {
+      msg.textContent = "Login failed. Try again.";
+    }
+
+    showLoading(false);
+  }
 });
 
-function showLoading(v) {
-    document.getElementById('loading').classList.toggle('hidden', !v);
+/* ===============================
+   AUTO LOGIN (SESSION CHECK)
+================================ */
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return;
+
+  try {
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      const firestoreRole = userSnap.data().role;
+      const selectedRole = localStorage.getItem('selectedRole');
+
+      // Compare selected role with Firestore role
+      if (firestoreRole !== selectedRole) {
+        alert("Unauthorized access. Please select the correct role."); 
+        return;
+      }
+
+      redirectByRole(firestoreRole);
+    }
+  } catch (err) {
+    console.error("Auto-login error:", err);
+  }
+});
+
+/* ===============================
+   HELPERS
+================================ */
+function redirectByRole(role) {
+  if (role === "admin") {
+    window.location.href = "admin.html";
+  } else if (role === "doctor") {
+    window.location.href = "doctor.html";
+  } else if (role === "patient") {
+    window.location.href = "patient.html";
+  } else {
+    alert("Invalid role assigned");
+    showLoading(false);
+  }
 }
 
-// Auto-redirect if already logged in
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
-onAuthStateChanged(auth, (user) => {
-    if (user) {
-        // User is signed in, check their role and redirect
-        getDoc(doc(db, 'users', user.uid)).then(userDoc => {
-            if (userDoc.exists()) {
-                const role = userDoc.data().role;
-                if (role === 'admin') {
-                    window.location.href = 'admin.html';
-                } else if (role === 'doctor') {
-                    window.location.href = 'doctor.html';
-                } else if (role === 'patient') {
-                    window.location.href = 'patient.html';
-                }
-            }
-        }).catch(error => {
-            console.error('Error getting user role:', error);
-        });
-    }
-});
+function showLoading(show) {
+  loader.classList.toggle("hidden", !show);
+}
