@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Login - Smart OPD Queue Management System</title>
+	<link rel="stylesheet" href="css/style.css">
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="landing-page">
+
+	<header class="landing-header">
+		<div class="header-content">
+			<div class="hospital-logo">🏥</div>
+			<div>
+				<h1 class="system-title">Smart OPD Queue Management System</h1>
+				<p class="system-tagline">Secure Login</p>
+			</div>
+		</div>
+	</header>
+
+	<main class="landing-main">
+		<div class="auth-panel" id="loginPanel">
+			<h2 id="authTitle">Login</h2>
+			<div class="auth-container">
+				<div class="auth-form" id="loginForm">
+					<input id="loginEmail" type="email" placeholder="Email" autocomplete="email" />
+					<input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" />
+					<button id="loginBtn" class="btn primary full-width">Login</button>
+					<p id="loginMsg" class="auth-message"></p>
+				
+					<!-- Patient-specific options (shown only for patient role) -->
+					<div id="patientOptions" class="hidden">
+						<div class="divider">OR</div>
+						<button id="googleLoginBtn" class="btn secondary full-width">Continue with Google</button>
+						<div class="toggle-auth">
+							<span>Don't have an account? <span id="showRegisterLink" class="link">Register as New Patient</span></span>
+						</div>
+					</div>
+				
+					<!-- Patient Registration Form (hidden initially) -->
+					<div id="registerForm" class="hidden">
+						<div class="divider">Patient Registration</div>
+						<input id="registerName" type="text" placeholder="Full Name" autocomplete="name" />
+						<input id="registerEmail" type="email" placeholder="Email" autocomplete="email" />
+						<input id="registerPassword" type="password" placeholder="Password" autocomplete="new-password" />
+						<input id="confirmPassword" type="password" placeholder="Confirm Password" />
+						<button id="registerBtn" class="btn primary full-width">Register</button>
+						<div class="toggle-auth">
+							<span>Already have an account? <span id="showLoginLink" class="link">Login</span></span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</main>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+	<div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+	<script type="module" src="js/login.js"></script>
+
+</body>
+</html>

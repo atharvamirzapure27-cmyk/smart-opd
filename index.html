@@ -1,0 +1,76 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Smart OPD Queue Management System</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+	<header class="landing-header">
+		<div class="header-content">
+			<div class="hospital-logo">🏥</div>
+			<div>
+				<h1 class="system-title">Smart OPD Queue Management System</h1>
+				<p class="system-tagline">Reducing Hospital Waiting Time with Technology</p>
+				<p class="hospital-names">AVBRH, DMIHER, Sawangi (Wardha) • Shalini Tai Meghe Superspeciality Centre</p>
+			</div>
+		</div>
+	</header>
+
+	<main class="landing-main">
+		<div class="role-selector">
+			<h2 class="selector-title">Select Your Role</h2>
+			<div class="role-cards">
+				<div class="role-card" onclick="selectRole('patient')">
+					<div class="role-icon">👤</div>
+					<h3>Patient Login</h3>
+					<p>Book appointments and track queue status</p>
+					<button class="role-btn btn-patient" onclick="selectRole('patient')">Login as Patient</button>
+				</div>
+				<div class="role-card" onclick="selectRole('doctor')">
+					<div class="role-icon">👨‍⚕️</div>
+					<h3>Doctor Login</h3>
+					<p>Manage your OPD queue and patient consultations</p>
+					<button class="role-btn btn-doctor" onclick="selectRole('doctor')">Login as Doctor</button>
+				</div>
+				<div class="role-card" onclick="selectRole('admin')">
+					<div class="role-icon">⚙️</div>
+					<h3>Admin Login</h3>
+					<p>Manage system, doctors, and appointments</p>
+					<button class="role-btn btn-admin" onclick="selectRole('admin')">Login as Admin</button>
+				</div>
+			</div>
+		</div>
+	</main>
+	
+	<script>
+		function selectRole(role) {
+			localStorage.setItem('selectedRole', role);
+			window.location.href = 'login.html';
+		}
+		
+		// Clear any existing selected role on landing page load
+		localStorage.removeItem('selectedRole');
+		
+		// Also clear any stored user data to ensure fresh login
+		localStorage.removeItem('userRole');
+		localStorage.removeItem('uid');
+	</script>
+
+	<footer class="footer">
+		<div class="footer-content">
+			<strong>Built by Atharva Mirzapure</strong>
+			<p>B.Tech (2nd Year) Student | Smart OPD Queue Management System</p>
+			<p>© 2026 Smart OPD System. All rights reserved.</p>
+		</div>
+	</footer>
+
+</body>
+</html>
+
