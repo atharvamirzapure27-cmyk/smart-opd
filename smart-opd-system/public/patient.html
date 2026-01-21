@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Patient Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header class="navbar">
+    <div class="brand">
+      <img src="assets/logo.svg" class="logo" alt="logo">
+      <div>
+        <div class="title">Smart OPD Queue System</div>
+        <div class="tagline">Reducing Hospital Waiting Time with Technology</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div id="userRole" class="small muted">Loading...</div>
+      <button id="logoutBtn" class="btn nav-logout">Logout</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="grid">
+      <section class="card fade-up">
+        <h2 class="page-title">Book Appointment</h2>
+        <input id="doctorEmail" placeholder="Doctor Email" />
+        <input id="opd" placeholder="OPD" />
+        <input id="time" placeholder="Time (e.g. 10:30)" />
+        <div style="margin-top:8px"><button id="bookBtn" class="btn primary">Book Appointment</button></div>
+      </section>
+
+      <aside>
+        <div class="card">
+          <h3 class="small muted">Your Appointments</h3>
+          <div id="appointmentsList"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <div id="loading" class="loading hidden"><div class="spinner"></div></div>
+
+  <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signOut,
+  connectAuthEmulator
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore,
+  addDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  serverTimestamp,
+  doc,
+  getDoc,
+  connectFirestoreEmulator
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC6ALCXtrsYoZ2RrIwAQMLLHX30ztYTnpo",
+  authDomain: "studio-1828532244-e822b.firebaseapp.com",
+  projectId: "studio-1828532244-e822b",
+  storageBucket: "studio-1828532244-e822b.appspot.com",
+  messagingSenderId: "722776494280",
+  appId: "1:722776494280:web:a3fef849e76f15a98995fd"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Emulator: fixed localhost ports (auth:9099, firestore:8080)
+if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+}
+
+let user;
+
+onAuthStateChanged(auth, async (u) => {
+  if (!u) return window.location.href = 'index.html';
+  showLoading(true);
+  const profSnap = await getDoc(doc(db, 'users', u.uid));
+  if (!profSnap.exists() || profSnap.data().role !== 'patient') {
+    alert('Access denied: must be a patient');
+    await signOut(auth);
+    return window.location.href = 'index.html';
+  }
+  user = u;
+  document.getElementById('userRole').innerText = `Patient: ${profSnap.data().name || u.email}`;
+  subscribeMyAppointments();
+  showLoading(false);
+});
+
+async function computeToken(doctor, opd) {
+  const q = query(
+    collection(db, 'appointments'),
+    where('doctorEmail', '==', doctor),
+    where('opd', '==', opd)
+  );
+  const snap = await getDocs(q);
+  let maxToken = 0;
+  snap.forEach(d => {
+    const t = Number(d.data().token) || 0;
+    if (t > maxToken) maxToken = t;
+  });
+  return maxToken + 1;
+}
+
+document.getElementById('bookBtn').addEventListener('click', async () => {
+  if (!user) return alert('Not authenticated');
+  const doctor = document.getElementById('doctorEmail').value.trim();
+  const opdVal = document.getElementById('opd').value.trim();
+  const timeVal = document.getElementById('time').value.trim() || new Date().toLocaleString();
+  if (!doctor || !opdVal) return alert('Doctor email and OPD required');
+  showLoading(true);
+  const token = await computeToken(doctor, opdVal);
+  await addDoc(collection(db, 'appointments'), {
+    patientId: user.uid,
+    patientEmail: user.email,
+    doctorEmail: doctor,
+    opd: opdVal,
+    time: timeVal,
+    token: token,
+    status: 'waiting',
+    createdAt: serverTimestamp()
+  });
+  alert(`Booked. Token: ${token}`);
+  showLoading(false);
+});
+
+function subscribeMyAppointments() {
+  const q = query(collection(db, 'appointments'), where('patientId', '==', user.uid), orderBy('createdAt', 'desc'));
+  onSnapshot(q, snap => {
+    const container = document.getElementById('appointmentsList');
+    container.innerHTML = '';
+    if (snap.empty) return container.innerHTML = '<div class="muted">No appointments</div>';
+    snap.forEach(d => {
+      const a = d.data();
+      const div = document.createElement('div');
+      div.className = 'appt-card fade-up';
+      const badgeClass = a.status === 'waiting' ? 'badge waiting' : a.status === 'consulting' ? 'badge consulting' : 'badge completed';
+      const est = estimateWait(a);
+      div.innerHTML = `
+        <div>
+          <div><strong>Token ${a.token}</strong> • ${a.doctorEmail}</div>
+          <div class="small">OPD: ${a.opd} • ${a.time} • ${est}</div>
+        </div>
+        <div class="badges">
+          <div class="${badgeClass}">${a.status.replace('_',' ')}</div>
+        </div>`;
+      container.appendChild(div);
+    });
+  });
+}
+
+function estimateWait(appt) {
+  if (appt.status === 'consulting') return 'In consultation';
+  if (appt.status === 'completed') return 'Completed';
+  // simple estimate: count waiting before this token for same doctor+opd * 5 minutes
+  return 'Est. waiting: calculating...';
+}
+
+function showLoading(v){document.getElementById('loading').classList.toggle('hidden', !v)}
+
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{ await signOut(auth); location.href='index.html' });
+</script>
+
+</body>
+</html>
+</script>
+
+</body>
+</html>
